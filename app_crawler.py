@@ -5,36 +5,45 @@
 ''' App Crawler'''
 __author__='linpingta@163.com'
 
-import os,sys
+import os
+import sys
 import logging
-import ConfigParser
-
+try:
+	import ConfigParser
+except ImportError:
+	import configparser as ConfigParser
 import time
 import re
 import requests
 import simplejson as json
+from abc import ABCMeta, abstractmethod
 
 
 class AppCrawler(object):
-	''' App Info Fetcher, 
+	""" App Info Fetcher,
 	maybe not crawler, but used for itunes store or google play store info fetch
-	'''
+	"""
+	__metaclass__ = ABCMeta
+
 	def __init__(self, conf):
+		self._country = conf.get('app_crawler','country')
+		self._lang = conf.get('app_crawler','lang')
+
 		# app_url list
-		self.app_urls = []
+		self._app_urls = []
+
 		# app_id as key, app_info (list) as value
-		self.app_info_dict = {}
+		self._app_info_dict = {}
 
-		self.country = conf.get('app_crawler','country')
-		self.lang = conf.get('app_crawler','lang')
+		self._requests = requests.Session()
 
-		self.requests = requests.Session()
-
+	@abstractmethod
 	def _extract_unique_id(self, app_url, logger):
-		return ''
+		pass
 
+	@abstractmethod
 	def _request(self, app_unique_id, logger):
-		return []
+		pass
 
 	def load_file(self, app_url_file, logger):
 		with open(app_url_file, 'r') as fp_r:
@@ -43,44 +52,43 @@ class AppCrawler(object):
 				line = line.strip()
 				if not line:
 					break
-				self.app_urls.append(line)
+				self._app_urls.append(line)
+
+	def save_file(self, app_url_file_output, logger):
+		with open(app_url_file_output, 'w') as fp_w:
+			json.dump(self._app_info_dict, fp_w)
 
 	def save_file_for_human(self, app_url_file_output, logger):
 		with open(app_url_file_output, 'w') as fp_w:
-			for app_id, app_info in self.app_info_dict.iteritems():
-				t = []
+			for app_id, app_info in self._app_info_dict.iteritems():
 				if not app_info:
 					continue
+				t = []
 				[ t.append(str(item)) for item in app_info ]
 				t_s = '::'.join(t)
 				t_f = ','.join([str(app_id), t_s])
 				fp_w.write("%s" % t_s)
 
-	def save_file(self, app_url_file_output, logger):
-		with open(app_url_file_output, 'w') as fp_w:
-			json.dump(self.app_info_dict, fp_w)
-
 	def run(self, logger):
-		for idx, app_url in enumerate(self.app_urls):
+		for idx, app_url in enumerate(self._app_urls):
 			logger.info('%s : %s fetch app_info' % (self.__class__.__name__, app_url))
 			app_unique_id = self._extract_unique_id(app_url, logger)
 			if not app_unique_id:
 				logger.warning('no info extracted from app_url %s' % app_url)
 			else:
 				app_info = self._request(app_unique_id, logger)
-				self.app_info_dict[app_unique_id] = app_info
-
-			time.sleep(2)
+				self._app_info_dict[app_unique_id] = app_info
+			time.sleep(1)
 
 
 class AndroidAppCrawler(AppCrawler):
-	''' Android Info
-	'''
+	""" Android Info Read, with 42 masters
+	"""
 	def __init__(self, conf):
-		self.prefix_url = 'https://data.42matters.com/api/v2.0/android/apps/lookup.json'
-		self.android_access_token = conf.get('app_crawler','android_access_token')
-
 		super(AndroidAppCrawler, self).__init__(conf)
+
+		self._prefix_url = conf.get('android_app_crawler', 'prefix_url')
+		self._android_access_token = conf.get('android_app_crawler','android_access_token')
 
 	def _extract_unique_id(self, app_url, logger):
 		info = re.findall('id=(.*)', app_url, 0)
@@ -89,21 +97,21 @@ class AndroidAppCrawler(AppCrawler):
 	def _request(self, app_unique_id, logger):
 
 		method = 'GET'
-		path = "/".join((self.prefix_url,
+		path = "/".join((self._prefix_url,
 			'lookup',
 		))
 		params = {'p': app_unique_id,
-			'access_token': self.android_access_token
+			'access_token': self._android_access_token
 		}
-		response = self.requests.request(
+		response = self._requests.request(
 			method,
 			path,
 			params=params
 		)
 		if response.status_code == 200:
 			content = response.json()
-			for key, item in content.iteritems():
-				print key, item
+			#for key, item in content.iteritems():
+			#	print key, item
 			if 'cat_keys' in content:
 				return content['cat_keys']
 			elif 'cat_key' in content:
@@ -114,11 +122,12 @@ class AndroidAppCrawler(AppCrawler):
 
 
 class IosAppCrawler(AppCrawler):
-	''' Ios Info
-	'''
+	""" Ios Info
+	"""
 	def __init__(self, conf):
-		self.prefix_url = 'https://itunes.apple.com'
 		super(IosAppCrawler, self).__init__(conf)
+
+		self._prefix_url = conf.get('ios_app_crawler', 'prefix_url')
 
 	def _extract_unique_id(self, app_url, logger):
 		info = re.findall('id(.*)', app_url, 0)
@@ -127,12 +136,12 @@ class IosAppCrawler(AppCrawler):
 	def _request(self, app_unique_id, logger):
 
 		method = 'GET'
-		path = "/".join((self.prefix_url,
-			self.country,
+		path = "/".join((self._prefix_url,
+			self._country,
 			'lookup',
 		))
 		params = {'id': app_unique_id}
-		response = self.requests.request(
+		response = self._requests.request(
 			method,
 			path,
 			params=params
@@ -158,7 +167,7 @@ if __name__ == '__main__':
 		format = '[%(filename)s:%(lineno)s - %(funcName)s %(asctime)s;%(levelname)s] %(message)s',
 		datefmt = '%a, %d %b %Y %H:%M:%S'
 		)
-	logger = logging.getLogger('AdManager')
+	logger = logging.getLogger('AppCrawler')
 
 	try:
 		# android crawl
@@ -176,5 +185,6 @@ if __name__ == '__main__':
 		ios_crawler.load_file(app_url_file, logger)
 		ios_crawler.run(logger)
 		ios_crawler.save_file(app_url_file_output, logger)
+
 	except Exception,e:
 		logging.exception(e)
