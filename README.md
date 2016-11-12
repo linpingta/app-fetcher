@@ -1,5 +1,5 @@
-# app-fetcher
-Visit of app info in "iTunes" and "Google Play" store
+# app-type-fetcher
+Visit of app type info in "iTunes" and "Google Play" store
 
 ###背景
 
@@ -46,4 +46,4 @@ itunes提供了对外的API，可以访问指定国家的应用描述。
 
 ###后续补充
 
-因为只是一个临时性的应用，有很多地方考虑的很简单，也不够完善，比如脚本里只获取app的类型，而API实际返回的信息很多。总体来说，只当是一个方向的简单探索吧。
+因为只是一个临时性的应用，有很多地方考虑的很简单，也不够完善，比如脚本里只获取了app的类型，而API实际返回的信息很多。
